@@ -1,16 +1,15 @@
 import json
 import requests
 import pandas
-import _snowflake
 import snowflake.snowpark as snowpark
-session = requests.Session()
 
 endpointrequestheader = ''
 df = None
 df_data = None
 
 def runJson():
-        credentials = json.loads(_snowflake.get_generic_secret_string('cred'), strict=False)
+        with open("connexion/belgium.json") as cred:
+                credentials = json.loads(cred)
         return credentials
 
 def set_dataframe(df_data, **kwargs):
@@ -59,6 +58,8 @@ def creat_dataframe(df_data):
                 }
         )
         return df
+
+
 
 def get_endpoint():
         endpointrequestheader = runJson()
