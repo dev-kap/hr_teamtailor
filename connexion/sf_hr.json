@@ -1,0 +1,10 @@
+{
+    "account": "vz31470.west-europe.azure",
+    "user": "ERIC",
+    "role": "ACCOUNTADMIN",
+    "password": "EricT0cH@nge",
+    "warehouse": "COMPUTE_WH",
+    "database": "HR",
+    "schema": "TEAM_TAILOR",
+    "client_session_keep_alive" : "true"
+}
