@@ -73,10 +73,11 @@ def main():#session: snowpark.Session):
           print(country + ' - Job Reject Reason Done')  
 
           # CALL MERFE FUNCTION
-          session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLESj')  
+          
         except Exception as e:
              print(e)
              continue
+    session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLES') 
   
 def create_dataframe(endpoint_url, table_name, country, params, session):
      df = pandas.DataFrame()
