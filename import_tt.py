@@ -37,60 +37,71 @@ def main():#session: snowpark.Session):
     endpoint_params_company = dict()
 
     endpoint_params_job_app["include"]  = "candidate,job,stage,reject-reason"
+    endpoint_params_job_app["sort"] = "created-at"
     endpoint_params_job["include"]      = "department,location,role,user" 
+    endpoint_params_job["filter[status"] = "all"
+    endpoint_params_job["filter[feed]"] = "public,internal"
     endpoint_params_candidate["include"]= "activities"
+    endpoint_params_candidate["sort"] = "created-at"
     endpoint_params_users["include"] = "department,location"
-
-    for country in ['belgium','brazil','canada_en','canada_fr','colombia','epm','france','group','kls_belgium','kls_france','kls_group','kls_north_america','spain','portugal','uk','usa']: 
-    #for country in ['kls_group','kls_north_america','spain','portugal','uk','usa']:    
-        try:   
-          # COMPANY
-          create_dataframe(endpoint_company_url,'company',country,endpoint_params_company,session_sf)
-          print(country + ' - Company Done')        
-          # JOB APPLICATION
-          create_dataframe(endpoint_job_app_url, 'job_application',country,endpoint_params_job_app,session_sf)
-          print(country + ' - Job Application Done')
-          # JOB
-          create_dataframe(endpoint_job_url,'job',country,endpoint_params_job,session_sf)
-          print(country + ' - Job Done')
-          # CANDIDATE
-          create_dataframe(endpoint_candidate_url,'candidate',country,endpoint_params_candidate,session_sf)
-          print(country + ' - Job Candidate Done')
-          # DEPARTMENT
-          create_dataframe(endpoint_department_url,'department', country, endpoint_params_department, session_sf)
-          print(country + ' - Job Department Done')
-          # LOCATION
-          create_dataframe(endpoint_location_url, 'location',country,endpoint_params_location,session_sf)   
-          print(country + ' - Job Location Done')      
-          # ROLE
-          create_dataframe(f'{endpoint_url}roles','roles',country,endpoint_params_roles, session_sf)
-          print(country + ' - Job Role  Done')
-          # USERS
-          create_dataframe(f'{endpoint_url}users','users',country,endpoint_params_users,session_sf)   
-          print(country + ' - Job User Done')   
-          # REJECT REASON
-          create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',country,endpoint_params_reject_reason, session_sf)   
-          print(country + ' - Job Reject Reason Done')  
-
-          # CALL MERFE FUNCTION
+    try: 
+          #for country in ['usa','colombia','brazil']: 
+          for country in ['brazil','colombia','usa']:          
           
-        except Exception as e:
-             print(e)
-             continue
-    session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLES') 
+               #TRUNCATE API TABLE 
+               truncate_api_table(country,session_sf)
+               print(country + ' - Api table truncated')
+               #COMPANY
+               #create_dataframe(endpoint_company_url,'company',country,endpoint_params_company,session_sf)
+               #print(country + ' - Company Done')        
+               # JOB APPLICATION
+               create_dataframe(endpoint_job_app_url, 'job_application',country,endpoint_params_job_app,session_sf)
+               print(country + ' - Job Application Done')
+               # JOB
+               #create_dataframe(endpoint_job_url,'job',country,endpoint_params_job,session_sf)
+               #print(country + ' - Job Done')
+               # CANDIDATE
+               create_dataframe(endpoint_candidate_url,'candidate',country,endpoint_params_candidate,session_sf)
+               print(country + ' - Job Candidate Done')
+               # DEPARTMENT
+               #create_dataframe(endpoint_department_url,'department', country, endpoint_params_department, session_sf)
+               #print(country + ' - Job Department Done')
+               # LOCATION
+               #create_dataframe(endpoint_location_url, 'location',country,endpoint_params_location,session_sf)   
+               #print(country + ' - Job Location Done')      
+               # ROLE
+               #create_dataframe(f'{endpoint_url}roles','roles',country,endpoint_params_roles, session_sf)
+               #print(country + ' - Job Role  Done')
+               # USERS
+               #create_dataframe(f'{endpoint_url}users','users',country,endpoint_params_users,session_sf)   
+               #print(country + ' - Job User Done')   
+               # REJECT REASON
+               #create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',country,endpoint_params_reject_reason, session_sf)   
+               #print(country + ' - Job Reject Reason Done')  
+
+          # CALL MERGE 
+          session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLES') 
+          print('Refresh Done')                
+    except Exception as e:
+          print(e)
+          session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLES') 
+          print('Refresh Done')  
+     
   
 def create_dataframe(endpoint_url, table_name, country, params, session):
      df = pandas.DataFrame()
      df_stages = pandas.DataFrame()
      df_activities = pandas.DataFrame()
-
+     
      country_name = ""
      if country == "belgium":
           country_name = "Belgium"
      elif country == "brazil":
           country_name = "Brazil"
-     elif country in  ("canada_en","canada_fr"):
-          country_name = "Canada"
+     elif country  == "canada_en":
+          country_name = "Canada EN"
+     elif country == "canada_fr":
+          country_name = "Canada FR"
      elif country == "colombia":
           country_name = "Colombia"
      elif country == "epm":
@@ -116,13 +127,13 @@ def create_dataframe(endpoint_url, table_name, country, params, session):
      elif country == "usa":
           country_name = "USA"
 
-
+     
      if table_name not in ('department','location','roles','users','reject_reasons','company'):
         last_update_dtm = get_last_updated_dt('tt_' + table_name,session,country) 
         if last_update_dtm != None:
             params["filter[updated-at][from]"] = last_update_dtm
         else:
-            params["filter[created-at][from]"] = '2024-01-01T00:00:00.000+00:00'
+            params["filter[created-at][from]"] = '2020-01-01T00:00:00.000+00:00'
 
      pg_count = 0
      if table_name == 'company':
@@ -168,6 +179,51 @@ def create_dataframe(endpoint_url, table_name, country, params, session):
                   df_activities = pandas.concat([df_activities, df_activities_ok],ignore_index=True)
 
         df =pandas.concat([df, pandas.json_normalize(endpoint_response["data"])],ignore_index=True)
+
+        #Commit in Snowflake after 10 pages
+        if current_page % 10 == 0:
+                    creation_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    if len(df)> 0:
+                         df["country"] = country_name
+                         df["source"] = country
+                         df["creation_dtm"] = creation_dtm
+                         if table_name == 'job_application':
+                              if "relationships.reject-reason.data.id" not in df.columns:
+                                   df["relationships.reject-reason.data.id"] = ""
+                         if table_name == 'job':
+                              if "relationships.location.data.id" not in df.columns:
+                                   df["relationships.location.data.id"] = ""
+                              if "relationships.role.data.id" not in df.columns:
+                                   df["relationships.role.data.id"] = ""
+                              if "links.careersite-job-internal-url" not in df.columns:
+                                   df["links.careersite-job-internal-url"] = ""
+                              if "relationships.department.data.id" not in df.columns:
+                                   df["relationships.department.data.id"] = ""
+                         if table_name == 'users':
+                              if "relationships.department.data.id" not in df.columns:
+                                   df["relationships.department.data.id"] = ""
+                         df = df.astype(str)
+                         df = df.drop_duplicates()
+                         session.write_pandas(df, f'api_{table_name}_{country}',auto_create_table=False,overwrite=False)
+                         df = df.truncate(after=-1)
+                    if len(df_stages) > 0 :
+                         df_stages["creation_dtm"] = creation_dtm
+                         df_stages = df_stages.astype(str)
+                         df_stages = df_stages.drop_duplicates()
+                         session.write_pandas(df_stages,f'api_stages_{country}',auto_create_table=False,overwrite=False)
+                         df_stages = df_stages.truncate(after=-1)
+                    if len(df_activities) > 0:
+                         df_activities["country"] = country_name
+                         df_activities["source"] = country
+                         df_activities = df_activities.astype({'id':'int32', 'candidate_id':'int32'})
+                         df_activities = df_activities.loc[df_activities.groupby('candidate_id')['id'].idxmax()]
+                         df_activities["creation_dtm"] = creation_dtm
+                         df_activities = df_activities.astype(str)
+                         df_activities = df_activities.drop_duplicates()
+                         session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=False)
+                         df_activities = df_activities.truncate(after=-1)
+                    
+     
      
      creation_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
      if len(df)> 0:
@@ -182,16 +238,22 @@ def create_dataframe(endpoint_url, table_name, country, params, session):
                     df["relationships.location.data.id"] = ""
                if "relationships.role.data.id" not in df.columns:
                     df["relationships.role.data.id"] = ""
+               if "links.careersite-job-internal-url" not in df.columns:
+                    df["links.careersite-job-internal-url"] = ""
+               if "relationships.department.data.id" not in df.columns:
+                    df["relationships.department.data.id"] = ""
           if table_name == 'users':
                if "relationships.department.data.id" not in df.columns:
                     df["relationships.department.data.id"] = ""
           df = df.astype(str)
-          session.write_pandas(df, f'api_{table_name}_{country}',auto_create_table=False,overwrite=True)
+          df = df.drop_duplicates()
+          session.write_pandas(df, f'api_{table_name}_{country}',auto_create_table=False,overwrite=False)
      if len(df_stages) > 0 :
           df_stages["creation_dtm"] = creation_dtm
           df_stages = df_stages.astype(str)
           df_stages = df_stages.drop_duplicates()
-          session.write_pandas(df_stages,f'api_stages_{country}',auto_create_table=False,overwrite=True)
+          df_stages = df_stages.drop_duplicates()
+          session.write_pandas(df_stages,f'api_stages_{country}',auto_create_table=False,overwrite=False)
      if len(df_activities) > 0:
           df_activities["country"] = country_name
           df_activities["source"] = country
@@ -199,7 +261,8 @@ def create_dataframe(endpoint_url, table_name, country, params, session):
           df_activities = df_activities.loc[df_activities.groupby('candidate_id')['id'].idxmax()]
           df_activities["creation_dtm"] = creation_dtm
           df_activities = df_activities.astype(str)
-          session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=True)
+          df_activities = df_activities.drop_duplicates()
+          session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=False)
 
      
 
@@ -235,6 +298,19 @@ def get_endpoint_response(endpoint_url , country, params):
                      
                 status_code = endpoint_request_response.status_code
         return endpoint_request_response.json()
+
+def truncate_api_table(country, session):
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_activities_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_candidate_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_company_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_department_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_job_application_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_job_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_location_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_reject_reasons_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_roles_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_stages_{country}"').collect()
+     session.sql(f'TRUNCATE TABLE  HR.TEAM_TAILOR."api_users_{country}"').collect()
 
 main()
 
