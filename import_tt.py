@@ -67,13 +67,13 @@ def main(loadType):#session: snowpark.Session):
                          create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
                          print(str(source['source']) +  ' - Job Reject Reason Done')    
 
-                    if loadType in ('FULL','FACT', None) :
-                         #--JOB APPLICATION
-                         create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
-                         print(str(source['source']) + ' - Job Application Done')
+                    if loadType in ('FULL','FACT', None) :                         
                          #--JOB
                          create_dataframe(f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf)
                          print(str(source['source']) + ' - Job Done')
+                         #--JOB APPLICATION
+                         create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
+                         print(str(source['source']) + ' - Job Application Done')
                          #--CANDIDATE
                          create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
                          print(str(source['source']) + ' - Job Candidate Done')                    
@@ -84,8 +84,8 @@ def main(loadType):#session: snowpark.Session):
 
     except Exception as e:
           print(e)
-          #session_sf.call('HR.TEAM_TAILOR.TT_UPDATE_TABLES') 
-          print('Refresh Done')  
+          res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
+          print('Refresh Done : ' + res)     
       
 def create_dataframe(endpoint_url, table_name, source, params, session):
      df = pandas.DataFrame()
@@ -96,7 +96,7 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
      source_name =source['source']
      country_name = source['country']
      
-     if table_name not in ('department','location','roles','users','reject_reasons','company'):
+     if table_name not in ('department','location','roles','users','reject_reasons','company','job'):
         last_update_dtm = get_last_updated_dt('tt_' + table_name,session,source_name) 
         if last_update_dtm != None:
             params["filter[updated-at][from]"] = last_update_dtm
@@ -244,5 +244,5 @@ def commit_dataframe(table_name, country_name, country,df, df_stages, df_activit
           df_activities = df_activities.drop_duplicates()
           session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=False)
 
-main('FULL')
+main('FACT')
 
