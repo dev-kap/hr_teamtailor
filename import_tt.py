@@ -29,12 +29,12 @@ def main(loadType):#session: snowpark.Session):
     endpoint_params_company = dict()
 
     endpoint_params_job_app["include"]  = "candidate,job,stage,reject-reason"
-    endpoint_params_job_app["sort"] = "created-at"
+    endpoint_params_job_app["sort"] = "updated-at"
     endpoint_params_job["include"]      = "department,location,role,user" 
     endpoint_params_job["filter[status"] = "all"
     endpoint_params_job["filter[feed]"] = "public,internal"
     endpoint_params_candidate["include"]= "activities"
-    endpoint_params_candidate["sort"] = "created-at"
+    endpoint_params_candidate["sort"] = "updated-at"
     endpoint_params_users["include"] = "department,location"
     try: 
           #--Truncate Api tables
@@ -101,7 +101,7 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
         if last_update_dtm != None:
             params["filter[updated-at][from]"] = last_update_dtm
         else:
-            params["filter[created-at][from]"] = '2020-01-01T00:00:00.000+00:00'
+            params["filter[updated-at][from]"] = '2020-01-01T00:00:00.000+00:00'
 
      pg_count = 0
      if table_name == 'company':
@@ -134,8 +134,8 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
                   activity_ok = []
                   pgCount_activities = get_endpoint_response(candidate_data["relationships"]["activities"]["links"]["related"],source_name,None)["meta"]["page-count"]
 
-                  for current_page in range(1, pgCount_activities + 1):
-                       paramsActivities["page[number]"] = current_page
+                  for current_page_act in range(1, pgCount_activities + 1):
+                       paramsActivities["page[number]"] = current_page_act
                        paramsActivities["include"] = "user"
                        activities = get_endpoint_response(candidate_data["relationships"]["activities"]["links"]["related"],source_name,paramsActivities)
                        
@@ -149,16 +149,23 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
         df =pandas.concat([df, pandas.json_normalize(endpoint_response["data"])],ignore_index=True)
 
         #Commit in Snowflake after 10 pages
-        if current_page % 10 == 0:
-             commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)                    
+        if current_page % 20 == 0:
+             commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)    
+             df = df.truncate(after=-1)    
+             df_stages = df_stages.truncate(after=-1)
+             df_activities = df_activities.truncate(after=-1)            
      
-     commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)
+     commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)      
+     df = df.truncate(after=-1)    
+     df_stages = df_stages.truncate(after=-1)
+     df_activities = df_activities.truncate(after=-1)            
+     
 
 def get_last_updated_dt(table_name,session, country):
     
     last_updated_dtm = None
     try:
-         last_updated_dtm_result = session.sql(f'SELECT IFF( max("attributes.created-at") < max("attributes.updated-at") , max("attributes.created-at"),max("attributes.updated-at")) LAST_UPDATED_DTM FROM HR.TEAM_TAILOR."{table_name}" WHERE "source" = \'{country}\'').collect()
+         last_updated_dtm_result = session.sql(f'SELECT max("attributes.updated-at") LAST_UPDATED_DTM FROM HR.TEAM_TAILOR."{table_name}" WHERE "source" = \'{country}\'').collect()
          if last_updated_dtm_result[0]['LAST_UPDATED_DTM'] != None:
             last_updated_dtm = last_updated_dtm_result[0]['LAST_UPDATED_DTM']
     except Exception as e:
@@ -232,7 +239,7 @@ def commit_dataframe(table_name, country_name, country,df, df_stages, df_activit
           df_stages["creation_dtm"] = creation_dtm
           df_stages = df_stages.astype(str)
           df_stages = df_stages.drop_duplicates()
-          df_stages = df_stages.drop_duplicates()
+          df_stages = df_stages.reset_index(drop=True)
           session.write_pandas(df_stages,f'api_stages_{country}',auto_create_table=False,overwrite=False)
      if len(df_activities) > 0:
           df_activities["country"] = country_name
@@ -242,7 +249,9 @@ def commit_dataframe(table_name, country_name, country,df, df_stages, df_activit
           df_activities["creation_dtm"] = creation_dtm
           df_activities = df_activities.astype(str)
           df_activities = df_activities.drop_duplicates()
+          df_activities = df_activities.reset_index(drop=True)
           session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=False)
 
-main('FACT')
+#--FULL,FACT,DIM
+main('FULL')
 
