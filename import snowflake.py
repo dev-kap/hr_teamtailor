@@ -82,3 +82,4 @@ def format_insert_update(snowpark_session,src_table,tgt_table,s_filter_cond):
         return "Error"
     return s_merge_stmnt
 
+main()

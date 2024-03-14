@@ -49,22 +49,22 @@ def main(loadType):#session: snowpark.Session):
                     
                     if loadType in ('FULL','DIM', None):
                          #--COMPANY
-                         create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
+                         #create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
                          print(str(source['source']) + ' - Company Done')    
                          #--DEPARTMENT
-                         create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
+                         #create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
                          print(str(source['source']) + ' - Job Department Done')
                          #--LOCATION
-                         create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
+                         #create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
                          print(str(source['source']) + ' - Job Location Done')      
                          #--ROLE
-                         create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
+                         #create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
                          print(str(source['source']) + ' - Job Role  Done')
                          #--USERS
                          create_dataframe(f'{endpoint_url}users','users',source,endpoint_params_users,session_sf)   
                          print(str(source['source']) + ' - Job User Done')   
-                         #--REJECT REASON
-                         create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
+                         #--REJECT REASON                         
+                         #create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
                          print(str(source['source']) +  ' - Job Reject Reason Done')    
 
                     if loadType in ('FULL','FACT', None) :                         
@@ -72,11 +72,11 @@ def main(loadType):#session: snowpark.Session):
                          create_dataframe(f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf)
                          print(str(source['source']) + ' - Job Done')
                          #--JOB APPLICATION
-                         create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
-                         print(str(source['source']) + ' - Job Application Done')
+                         #create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
+                         #print(str(source['source']) + ' - Job Application Done')
                          #--CANDIDATE
-                         create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
-                         print(str(source['source']) + ' - Job Candidate Done')                    
+                         #create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
+                         #print(str(source['source']) + ' - Job Candidate Done')                    
 
                # CALL MERGE 
                res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
@@ -149,11 +149,11 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
         df =pandas.concat([df, pandas.json_normalize(endpoint_response["data"])],ignore_index=True)
 
         #Commit in Snowflake after 10 pages
-        if current_page % 20 == 0:
-             commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)    
-             df = df.truncate(after=-1)    
-             df_stages = df_stages.truncate(after=-1)
-             df_activities = df_activities.truncate(after=-1)            
+        #if current_page % 20 == 0:
+        #     commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)    
+        #     df = df.truncate(after=-1)    
+        #     df_stages = df_stages.truncate(after=-1)
+        #     df_activities = df_activities.truncate(after=-1)            
      
      commit_dataframe(table_name, country_name, source_name, df, df_stages, df_activities, session,creation_dtm)      
      df = df.truncate(after=-1)    
@@ -250,8 +250,9 @@ def commit_dataframe(table_name, country_name, country,df, df_stages, df_activit
           df_activities = df_activities.astype(str)
           df_activities = df_activities.drop_duplicates()
           df_activities = df_activities.reset_index(drop=True)
-          session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=False)
+          session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=True)
 
 #--FULL,FACT,DIM
-main('FULL')
+main('DIM')
+
 
