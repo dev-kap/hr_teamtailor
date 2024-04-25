@@ -12,6 +12,7 @@ from snowflake.snowpark import Session, DataFrame
 endpoint_url = "https://api.teamtailor.com/v1/"
 
 def main(loadType):#session: snowpark.Session):
+    start_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     connection_sf = "connexion/sf_hr.json"
     with open(connection_sf) as f:
         connection_params = json.load(f)
@@ -33,6 +34,7 @@ def main(loadType):#session: snowpark.Session):
     endpoint_params_job["include"]      = "department,location,role,user" 
     endpoint_params_job["filter[status"] = "all"
     endpoint_params_job["filter[feed]"] = "public,internal"
+    endpoint_params_job["sort"] = "updated-at"
     endpoint_params_candidate["include"]= "activities"
     endpoint_params_candidate["sort"] = "updated-at"
     endpoint_params_users["include"] = "department,location"
@@ -49,22 +51,22 @@ def main(loadType):#session: snowpark.Session):
                     
                     if loadType in ('FULL','DIM', None):
                          #--COMPANY
-                         #create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
+                         create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
                          print(str(source['source']) + ' - Company Done')    
                          #--DEPARTMENT
-                         #create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
+                         create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
                          print(str(source['source']) + ' - Job Department Done')
                          #--LOCATION
-                         #create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
+                         create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
                          print(str(source['source']) + ' - Job Location Done')      
                          #--ROLE
-                         #create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
+                         create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
                          print(str(source['source']) + ' - Job Role  Done')
                          #--USERS
                          create_dataframe(f'{endpoint_url}users','users',source,endpoint_params_users,session_sf)   
                          print(str(source['source']) + ' - Job User Done')   
                          #--REJECT REASON                         
-                         #create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
+                         create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
                          print(str(source['source']) +  ' - Job Reject Reason Done')    
 
                     if loadType in ('FULL','FACT', None) :                         
@@ -72,20 +74,29 @@ def main(loadType):#session: snowpark.Session):
                          create_dataframe(f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf)
                          print(str(source['source']) + ' - Job Done')
                          #--JOB APPLICATION
-                         #create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
-                         #print(str(source['source']) + ' - Job Application Done')
+                         create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
+                         print(str(source['source']) + ' - Job Application Done')
                          #--CANDIDATE
-                         #create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
-                         #print(str(source['source']) + ' - Job Candidate Done')                    
+                         create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
+                         print(str(source['source']) + ' - Job Candidate Done')                    
 
                # CALL MERGE 
                res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
+               end_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+               create_log(end_dtm, start_dtm,end_dtm,
+                          'SUCCESS',res,session_sf)
                print('Refresh Done : ' + res)    
 
     except Exception as e:
           print(e)
           res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
-          print('Refresh Done : ' + res)     
+          end_dtm =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+          create_log(end_dtm, start_dtm,end_dtm,
+                          'ERROR',str(e),session_sf)
+          print('Refresh Done : ' + res)    
+
+def create_log(log_dtm, start_dtm, end_dtm, log_type, log_message, sf_session):
+      sf_session.sql(f'INSERT INTO HR.TEAM_TAILOR."cfg_log" VALUES (\'{log_dtm}\',\'{log_type}\',\'{log_message}\',\'{start_dtm}\',\'{end_dtm}\')').collect()
       
 def create_dataframe(endpoint_url, table_name, source, params, session):
      df = pandas.DataFrame()
@@ -96,7 +107,7 @@ def create_dataframe(endpoint_url, table_name, source, params, session):
      source_name =source['source']
      country_name = source['country']
      
-     if table_name not in ('department','location','roles','users','reject_reasons','company','job'):
+     if table_name not in ('department','location','roles','users','reject_reasons','company'):
         last_update_dtm = get_last_updated_dt('tt_' + table_name,session,source_name) 
         if last_update_dtm != None:
             params["filter[updated-at][from]"] = last_update_dtm
@@ -253,6 +264,6 @@ def commit_dataframe(table_name, country_name, country,df, df_stages, df_activit
           session.write_pandas(df_activities, f'api_activities_{country}', auto_create_table=False,overwrite=True)
 
 #--FULL,FACT,DIM
-main('DIM')
+main('FULL')
 
 
