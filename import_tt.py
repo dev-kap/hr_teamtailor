@@ -6,6 +6,7 @@ import snowflake.snowpark as snowpark
 from datetime import datetime
 import time,pytz
 from snowflake.snowpark import Session, DataFrame
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 #Global Variables
 #Endpoint URLs
@@ -43,50 +44,66 @@ def main(loadType):#session: snowpark.Session):
           truncate_api_tables(session_sf)
           #--Retrieve list of source & country
           src_countries = session_sf.sql('SELECT "source","country" FROM HR.TEAM_TAILOR."cfg_sources" WHERE "isactive"=\'Y\' ORDER BY "sort"').collect()
+          # Parallel sheet processing using a ThreadPoolExecutor
+          with ThreadPoolExecutor() as executor:
+               futures = []
+               #--
+               if len(src_countries) > 0 :
+                    for idx in range(len(src_countries)):
+                         source = src_countries[idx]
+                         
+                         if loadType in ('FULL','DIM', None):
+                              #--COMPANY
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}company','company',source,endpoint_params_company,session_sf))
+                              #create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
+                              #print(str(source['source']) + ' - Company Done')    
+                              #--DEPARTMENT
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf))
+                              #create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
+                              #print(str(source['source']) + ' - Job Department Done')
+                              #--LOCATION
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf))
+                              #create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
+                              #print(str(source['source']) + ' - Job Location Done')      
+                              #--ROLE
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf))
+                              #create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
+                              #print(str(source['source']) + ' - Job Role  Done')
+                              #--USERS
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}users','users',source,endpoint_params_users,session_sf))  
+                              #create_dataframe(f'{endpoint_url}users','users',source,endpoint_params_users,session_sf)   
+                              #print(str(source['source']) + ' - Job User Done')   
+                              #--REJECT REASON          
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf))                  
+                              #create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
+                              #print(str(source['source']) +  ' - Job Reject Reason Done')    
 
-          #--
-          if len(src_countries) > 0 :
-               for idx in range(len(src_countries)):
-                    source = src_countries[idx]
-                    
-                    if loadType in ('FULL','DIM', None):
-                         #--COMPANY
-                         create_dataframe(f'{endpoint_url}company','company',source,endpoint_params_company,session_sf)
-                         print(str(source['source']) + ' - Company Done')    
-                         #--DEPARTMENT
-                         create_dataframe(f'{endpoint_url}departments','department', source, endpoint_params_department, session_sf)
-                         print(str(source['source']) + ' - Job Department Done')
-                         #--LOCATION
-                         create_dataframe(f'{endpoint_url}locations', 'location',source,endpoint_params_location,session_sf)   
-                         print(str(source['source']) + ' - Job Location Done')      
-                         #--ROLE
-                         create_dataframe(f'{endpoint_url}roles','roles',source,endpoint_params_roles, session_sf)
-                         print(str(source['source']) + ' - Job Role  Done')
-                         #--USERS
-                         create_dataframe(f'{endpoint_url}users','users',source,endpoint_params_users,session_sf)   
-                         print(str(source['source']) + ' - Job User Done')   
-                         #--REJECT REASON                         
-                         create_dataframe(f'{endpoint_url}reject-reasons','reject_reasons',source,endpoint_params_reject_reason, session_sf)   
-                         print(str(source['source']) +  ' - Job Reject Reason Done')    
+                         if loadType in ('FULL','FACT', None) :                         
+                              #--JOB
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf))
+                              #create_dataframe(f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf)
+                              #print(str(source['source']) + ' - Job Done')
+                              #--JOB APPLICATION
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf))
+                              #create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
+                              #print(str(source['source']) + ' - Job Application Done')
+                              #--CANDIDATE
+                              futures.append(executor.submit(create_dataframe,f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf))
+                              #create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
+                              #print(str(source['source']) + ' - Job Candidate Done')                    
 
-                    if loadType in ('FULL','FACT', None) :                         
-                         #--JOB
-                         create_dataframe(f'{endpoint_url}jobs','job',source,endpoint_params_job,session_sf)
-                         print(str(source['source']) + ' - Job Done')
-                         #--JOB APPLICATION
-                         create_dataframe(f'{endpoint_url}job-applications', 'job_application',source,endpoint_params_job_app,session_sf)
-                         print(str(source['source']) + ' - Job Application Done')
-                         #--CANDIDATE
-                         create_dataframe(f'{endpoint_url}candidates','candidate',source,endpoint_params_candidate,session_sf)
-                         print(str(source['source']) + ' - Job Candidate Done')                    
+                         # Wait for all threads to complete
+                         for future in as_completed(futures):
+                              future.result() 
+                         futures = []
+                    # CALL MERGE 
+                    res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
+                    end_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    create_log(end_dtm, start_dtm,end_dtm,
+                              'SUCCESS',res,session_sf)
+                    print('Refresh Done : ' + res)    
 
-               # CALL MERGE 
-               res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
-               end_dtm = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-               create_log(end_dtm, start_dtm,end_dtm,
-                          'SUCCESS',res,session_sf)
-               print('Refresh Done : ' + res)    
-
+          
     except Exception as e:
           print(e)
           res = session_sf.call('HR.TEAM_TAILOR.TT_DYNAMIC_REFRESH') 
@@ -206,11 +223,20 @@ def get_endpoint_response(endpoint_url , country, params):
         return endpoint_request_response.json()
 
 def truncate_api_tables(session):
+     def truncate_table (table_name):
+          session.sql('TRUNCATE TABLE HR.TEAM_TAILOR."' + table_name + '"').collect()
+          print(table_name +  ' truncated')  
+     
      api_tables = session.sql("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'TEAM_TAILOR' AND TABLE_NAME LIKE 'api_%' AND ROW_COUNT > 0 ORDER BY 1").collect()     
-     if len(api_tables) != 0:
-          for idx in range(len(api_tables)):
-               session.sql('TRUNCATE TABLE HR.TEAM_TAILOR."' + str(api_tables[idx][0]) + '"').collect()
-               print(str(api_tables[idx][0]) +  ' truncated')  
+     with ThreadPoolExecutor() as executor:
+          futures = []     
+          if len(api_tables) != 0:
+               for idx in range(len(api_tables)):
+                    #session.sql('TRUNCATE TABLE HR.TEAM_TAILOR."' + str(api_tables[idx][0]) + '"').collect()
+                    futures.append(executor.submit(truncate_table,str(api_tables[idx][0])))
+               # Wait for all threads to complete
+               for future in as_completed(futures):
+                    future.result() 
 
      return str(len(api_tables))
 
